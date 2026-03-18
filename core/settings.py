@@ -10,6 +10,9 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 ALLOWED_HOSTS = ['*'] # Allows local and Railway
 
+CSRF_TRUSTED_ORIGINS = [
+    'https://real-time-chat-application-mke2.onrender.com'
+]
 # Daphne MUST be the first installed app
 INSTALLED_APPS = [
     'daphne',
