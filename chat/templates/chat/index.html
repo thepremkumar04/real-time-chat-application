@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Real-Time Chat</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: #dadbd3; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .chat-container { width: 100%; max-width: 600px; height: 90vh; background: #ffffff; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* Header & Search */
+        .chat-header { background-color: #075e54; color: white; padding: 12px 20px; display: flex; flex-direction: column; gap: 10px; }
+        .header-top { display: flex; justify-content: space-between; align-items: center; }
+        .search-bar { width: 100%; padding: 8px 15px; border-radius: 20px; border: none; outline: none; font-size: 0.85rem; color: #333; }
+        
+        #chat-box { flex: 1; padding: 20px; background-color: #e5ddd5; background-image: url("https://www.transparenttextures.com/patterns/cubes.png"); overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+        
+        /* Messages */
+        .message { max-width: 75%; padding: 10px 14px; border-radius: 8px; position: relative; font-size: 0.95rem; line-height: 1.4; box-shadow: 0 1px 2px rgba(0,0,0,0.1); animation: fadeIn 0.3s ease-in-out; transition: all 0.3s ease; }
+        .message.sent { align-self: flex-end; background-color: #dcf8c6; border-top-right-radius: 0; }
+        .message.received { align-self: flex-start; background-color: #ffffff; border-top-left-radius: 0; }
+        
+        .meta { font-size: 0.75rem; color: #667781; margin-bottom: 4px; font-weight: bold; display: flex; justify-content: space-between; gap: 10px; }
+        .sent .meta { color: #4b822b; }
+        
+        /* Delete Icon */
+        .delete-icon { cursor: pointer; font-size: 0.85rem; color: #b1b1b1; transition: color 0.2s, transform 0.2s; }
+        .delete-icon:hover { color: #e74c3c; transform: scale(1.2); }
+
+        .input-area { background-color: #f0f2f5; padding: 16px; display: flex; gap: 10px; }
+        input[type="text"] { padding: 12px 16px; border: 1px solid #ccc; border-radius: 24px; outline: none; font-size: 1rem; flex: 1; }
+        button { background-color: #075e54; color: white; border: none; border-radius: 24px; padding: 0 24px; font-size: 1rem; font-weight: bold; cursor: pointer; }
+        button:hover { background-color: #128c7e; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <div class="chat-container">
+        <div class="chat-header">
+            <div class="header-top">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <span style="font-weight: bold;">Room:</span>
+                    <input id="room-name-input" type="text" value="global" style="padding: 4px 8px; border-radius: 4px; border: none; width: 80px; color: black;">
+                    <button id="join-room-btn" style="padding: 4px 10px; font-size: 0.8rem;">Join</button>
+                </div>
+                <div style="font-size: 0.85rem;">
+                    <b>{{ username }}</b> | 
+                    <a href="{% url 'logout' %}" style="color: #ffcccc; text-decoration: none;">Logout</a>
+                </div>
+            </div>
+            <input id="search-input" class="search-bar" type="text" placeholder="🔍 Search in conversation...">
+        </div>
+        
+        <div id="chat-box"></div>
+        <div id="typing-indicator" style="padding: 5px 20px; font-size: 0.8rem; color: #075e54; font-style: italic; background: #f0f2f5; min-height: 25px;"></div>
+        
+        <div class="input-area">
+            <input type="file" id="image-input" accept="image/*" style="display: none;">
+            <button id="attach-btn" style="background: #e5ddd5; color: #333; padding: 0 15px;">📎</button>
+            <input id="chat-message-input" type="text" placeholder="Type a message...">
+            <button id="chat-message-submit" type="button">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatBox = document.getElementById('chat-box');
+        const typingIndicator = document.getElementById('typing-indicator');
+        const currentName = "{{ username }}"; 
+        let chatSocket = null; 
+        let selectedImageBase64 = null; 
+        let typingTimer;
+
+        // DELETE FUNCTION
+        function deleteMessage(msgId) {
+            if (chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+                chatSocket.send(JSON.stringify({ 'action': 'delete', 'message_id': msgId }));
+            }
+        }
+
+        // ADD MESSAGE TO SCREEN
+        function addMessage(msgId, msgUsername, messageText, timeStr, imageUrl = null) {
+            const messageElement = document.createElement('div');
+            messageElement.id = 'message-' + msgId; 
+            messageElement.className = (msgUsername === currentName) ? 'message sent' : 'message received';
+            
+            let imageHtml = imageUrl ? `<img src="${imageUrl}" style="max-width: 100%; border-radius: 8px; margin-bottom: 5px; max-height: 200px;">` : '';
+            let trashIcon = (msgUsername === currentName) ? `<span class="delete-icon" onclick="deleteMessage(${msgId})">🗑️</span>` : '';
+            
+            // Clean quotes to prevent HTML breaking
+            const safeText = messageText ? messageText.replace(/"/g, '&quot;') : '';
+
+            messageElement.innerHTML = `
+                <div class="meta">
+                    <span>${msgUsername}</span>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span style="font-weight: normal; font-size: 0.65rem;">${timeStr}</span>
+                        ${trashIcon}
+                    </div>
+                </div>
+                ${imageHtml}
+                <div class="msg-text" data-original="${safeText}">${messageText}</div>
+            `;
+            chatBox.appendChild(messageElement);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // CONNECT TO SERVER
+        function connectToRoom(roomName) {
+            if (chatSocket) chatSocket.close();
+            chatBox.innerHTML = ''; // Clears box on fresh connection
+
+            // Fetch History
+            fetch(`/api/messages/${roomName}/`)
+                .then(res => res.json())
+                .then(messages => {
+                    messages.forEach(msg => {
+                        const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        addMessage(msg.id, msg.username, msg.content, time, msg.image_url);
+                    });
+                });
+
+            const wsScheme = window.location.protocol === "https:" ? "wss://" : "ws://";
+            chatSocket = new WebSocket(wsScheme + window.location.host + '/ws/chat/' + roomName + '/');
+
+            chatSocket.onmessage = function(e) {
+                const data = JSON.parse(e.data);
+                
+                if (data.action === 'delete') {
+                    const msgDiv = document.getElementById('message-' + data.message_id);
+                    if (msgDiv) {
+                        msgDiv.style.opacity = "0";
+                        msgDiv.style.transform = "translateX(-20px)";
+                        setTimeout(() => msgDiv.remove(), 300);
+                    }
+                    return; 
+                }
+
+                if (data.typing !== undefined) {
+                    if (data.username !== currentName) {
+                        typingIndicator.innerText = data.typing ? `${data.username} is typing...` : '';
+                    }
+                    return; 
+                }
+
+                const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                addMessage(data.message_id, data.username, data.message, time, data.image_url);
+                typingIndicator.innerText = '';
+            };
+
+            // Auto-reconnect if server crashes
+            chatSocket.onclose = function(e) {
+                console.error('Socket closed unexpectedly. Reconnecting...');
+                setTimeout(() => connectToRoom(roomName), 2500);
+            };
+        }
+
+        connectToRoom('global');
+
+        // SEND MESSAGE
+        document.getElementById('chat-message-submit').onclick = function(e) {
+            e.preventDefault(); // Prevents accidental page reload
+            const inputDom = document.getElementById('chat-message-input');
+            const message = inputDom.value.trim();
+
+            if ((message || selectedImageBase64) && chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+                chatSocket.send(JSON.stringify({ 'message': message, 'image': selectedImageBase64 }));
+                inputDom.value = '';
+                selectedImageBase64 = null;
+                document.getElementById('image-input').value = '';
+                inputDom.placeholder = "Type a message...";
+            }
+        };
+
+        // KEYBOARD SHORTCUTS
+        document.getElementById('chat-message-input').onkeyup = function(e) {
+            if (e.key === 'Enter') document.getElementById('chat-message-submit').click();
+        };
+
+        // REAL-TIME SEARCH
+        document.getElementById('search-input').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            const messages = document.querySelectorAll('.message');
+
+            messages.forEach(msg => {
+                const textNode = msg.querySelector('.msg-text');
+                if (!textNode) return;
+
+                const originalText = textNode.getAttribute('data-original');
+                if (!originalText) return;
+                
+                if (searchTerm === "") {
+                    msg.style.display = "block";
+                    textNode.innerHTML = originalText;
+                } else if (originalText.toLowerCase().includes(searchTerm)) {
+                    msg.style.display = "block";
+                    const regex = new RegExp(`(${searchTerm})`, "gi");
+                    textNode.innerHTML = originalText.replace(regex, "<mark style='background: #ffeb3b; padding: 0 2px; border-radius: 3px;'>$1</mark>");
+                } else {
+                    msg.style.display = "none";
+                }
+            });
+        });
+
+        // IMAGE ATTACH
+        document.getElementById('attach-btn').onclick = () => document.getElementById('image-input').click();
+        document.getElementById('image-input').onchange = (e) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                selectedImageBase64 = event.target.result;
+                document.getElementById('chat-message-input').placeholder = "📸 Image ready to send!";
+            };
+            if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+        };
+    </script>
+</body>
+</html>
