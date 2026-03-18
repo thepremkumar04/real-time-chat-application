@@ -122,8 +122,14 @@
                     });
                 });
 
-            const wsScheme = window.location.protocol === "https:" ? "wss://" : "ws://";
-            chatSocket = new WebSocket(wsScheme + window.location.host + '/ws/chat/' + roomName + '/');
+            // 1. DYNAMIC PROTOCOL: Use 'wss' if on HTTPS (Production), 'ws' if on HTTP (Local)
+        const wsScheme = window.location.protocol === "https:" ? "wss://" : "ws://";
+        
+        // 2. DYNAMIC HOST: Use the current browser URL (works for both localhost and Render)
+        const wsUrl = wsScheme + window.location.host + '/ws/chat/' + roomName + '/';
+
+        console.log("Attempting to connect to: " + wsUrl);
+        chatSocket = new WebSocket(wsUrl);
 
             chatSocket.onmessage = function(e) {
                 const data = JSON.parse(e.data);
