@@ -53,22 +53,12 @@ DATABASES = {
 
 # Redis Setup (Use your public URL for local testing, internal for Railway)
 # If we are testing locally (DEBUG is True), use local memory instead of Redis
-if DEBUG:
-    CHANNEL_LAYERS = {
-        'default': {
-            'BACKEND': 'channels.layers.InMemoryChannelLayer',
-        },
+# Use In-Memory channel layer for both local and Render's single instance
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
     }
-# If we are on Railway (DEBUG is False), use the real Redis server
-else:
-    CHANNEL_LAYERS = {
-        'default': {
-            'BACKEND': 'channels_redis.core.RedisChannelLayer',
-            'CONFIG': {
-                "hosts": [os.getenv('REDIS_URL', 'redis://127.0.0.1:6379')],
-            },
-        },
-    }
+}
 
 TEMPLATES = [
     {
