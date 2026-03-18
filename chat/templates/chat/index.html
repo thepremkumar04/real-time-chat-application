@@ -220,6 +220,26 @@
             };
             if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
         };
+
+
+        // --- TYPING INDICATOR LOGIC ---
+let isTyping = false;
+
+document.getElementById('chat-message-input').addEventListener('input', () => {
+    if (!isTyping && chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+        isTyping = true;
+        chatSocket.send(JSON.stringify({ 'typing': true }));
+    }
+
+    // Stop showing "typing" after 2 seconds of no activity
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(() => {
+        isTyping = false;
+        if (chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+            chatSocket.send(JSON.stringify({ 'typing': false }));
+        }
+    }, 2000);
+});
     </script>
 </body>
 </html>
