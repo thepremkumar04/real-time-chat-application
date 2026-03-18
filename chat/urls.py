@@ -10,5 +10,5 @@ urlpatterns = [
     path('logout/', views.logout, name='logout'),
     
     # FIX: Make sure there is NO "/history/" here
-    path('api/messages/<str:room_name>/', views.room_history, name='room_history'),
+    path('api/messages/<str:room_name>/', views.get_message, name='get_message'),
 ]
